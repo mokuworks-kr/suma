@@ -9,9 +9,9 @@
   "theme_color": "#1c1917",
   "icons": [
     {
-      "src": "/public/icon.svg",
+      "src": "https://cdn-icons-png.flaticon.com/512/3663/3663335.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
