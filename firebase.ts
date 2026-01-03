@@ -1,5 +1,8 @@
+// firebase.ts
+
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore"; // 추가됨: 데이터베이스 도구
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -12,19 +15,24 @@ const firebaseConfig = {
   measurementId: "G-KWNNLDEG8S"
 };
 
-// Initialize Firebase
+// 파이어베이스 앱 초기화
 const app = initializeApp(firebaseConfig);
 
-// Safely initialize analytics (might be blocked in some environments)
+// 애널리틱스 (통계) - 에러 방지용 안전 장치 포함
 let analytics;
 try {
-  analytics = getAnalytics(app);
+  if (typeof window !== 'undefined') {
+    analytics = getAnalytics(app);
+  }
 } catch (e) {
   console.warn("Firebase Analytics failed to initialize", e);
 }
 
-// Initialize Auth
+// 1. 인증 도구 (로그인용) 내보내기
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// 2. 데이터베이스 도구 (장부용) 내보내기 - [새로 추가된 부분]
+export const db = getFirestore(app);
 
 export default app;
