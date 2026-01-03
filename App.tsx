@@ -5,6 +5,7 @@ import HistorySection from './components/HistorySection';
 import Navigation from './components/Navigation';
 import TimerView from './views/TimerView';
 import GlobeView from './views/GlobeView';
+import LoginView from './views/LoginView';
 import { STORAGE_KEY } from './utils';
 import { Session, MeditationState } from './types';
 
@@ -18,12 +19,16 @@ interface Ripple {
 }
 
 const App: React.FC = () => {
+  // Auth State
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // App State
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [totalMinutes, setTotalMinutes] = useState<number>(0);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [mounted, setMounted] = useState(false);
   
-  // Ripple State (이전 방식 복구: HSL 그라디언트 저장)
+  // Ripple State
   const [ripples, setRipples] = useState<Ripple[]>([]);
 
   // History Tab Highlight State
@@ -51,22 +56,24 @@ const App: React.FC = () => {
     }
   }, [totalMinutes, sessions, mounted]);
 
-  // 이전에 알려드린 랜덤 HSL 그라디언트 로직
+  const handleLogin = (provider: 'google' | 'apple' | 'guest') => {
+      // TODO: Firebase Integration will go here
+      console.log(`Attempting login with: ${provider}`);
+      setIsLoggedIn(true);
+  };
+
   const triggerRipple = useCallback(() => {
     const id = Date.now();
-    // 0~360도 색상환에서 랜덤 선택
     const h1 = Math.floor(Math.random() * 360);
-    const h2 = (h1 + 60) % 360; // 유사색 조합
+    const h2 = (h1 + 60) % 360; 
     
     const c1 = `hsl(${h1}, 70%, 60%)`;
     const c2 = `hsl(${h2}, 80%, 60%)`;
     
-    // 원형 그라디언트 생성
     const gradient = `radial-gradient(circle, ${c1}, ${c2}, transparent 70%)`;
     
     setRipples(prev => [...prev, { id, gradient }]);
 
-    // 1.5초 후 제거 (애니메이션 시간과 맞춤)
     setTimeout(() => {
       setRipples(prev => prev.filter(r => r.id !== id));
     }, 1500);
@@ -74,7 +81,6 @@ const App: React.FC = () => {
 
   const handleAddMinutes = useCallback((minutes: number) => {
     if (minutes > 0) {
-      // 1. 양수 시간(추가)일 때만 세션 기록 및 시각적 효과 발생
       const newSession: Session = {
           id: Date.now(),
           date: new Date().toISOString(),
@@ -87,8 +93,6 @@ const App: React.FC = () => {
       setHighlightHistory(true);
       setTimeout(() => setHighlightHistory(false), 350);
     } else if (minutes < 0) {
-      // 2. 음수 시간(감소) 처리 - History에도 반영되도록 세션 추가
-      // 단, 0분 미만으로 내려가지 않도록 실제 차감 가능한 시간만 기록
       const actualSubtraction = (totalMinutes + minutes < 0) ? -totalMinutes : minutes;
       
       if (actualSubtraction !== 0) {
@@ -105,6 +109,15 @@ const App: React.FC = () => {
 
   if (!mounted) return <div className="min-h-screen bg-zen-bg" />;
 
+  // Login Screen
+  if (!isLoggedIn) {
+      return (
+          <div className="h-[100dvh] bg-zen-bg text-zen-text font-sans">
+              <LoginView onLogin={handleLogin} />
+          </div>
+      );
+  }
+
   return (
     <div className="flex flex-col h-[100dvh] bg-zen-bg text-zen-text font-sans overflow-hidden relative">
       
@@ -113,7 +126,6 @@ const App: React.FC = () => {
         {ripples.map(ripple => (
             <div
                 key={ripple.id}
-                // animate-ripple 클래스가 index.html의 tailwind 설정에 있어야 함
                 className="absolute top-1/2 left-1/2 w-[100vw] h-[100vw] -ml-[50vw] -mt-[50vw] rounded-full opacity-0 animate-ripple origin-center mix-blend-screen blur-xl"
                 style={{ background: ripple.gradient }}
             />
