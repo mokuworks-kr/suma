@@ -6,7 +6,8 @@ const ASSETS_TO_CACHE = [
   '/App.tsx',
   '/utils.ts',
   '/types.ts',
-  '/manifest.json'
+  '/manifest.json',
+  '/public/icon.svg'
 ];
 
 self.addEventListener('install', (event) => {
