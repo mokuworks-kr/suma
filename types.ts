@@ -1,5 +1,12 @@
+export interface Session {
+  id: number;
+  date: string; // ISO string
+  duration: number;
+}
+
 export interface MeditationState {
   totalMinutes: number;
+  sessions: Session[];
 }
 
 export enum TimeFormat {

@@ -1,190 +1,224 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { signInWithPopup, onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { auth, googleProvider } from './firebase';
+
 import AccumulatorDisplay from './components/AccumulatorDisplay';
 import SessionLogger from './components/SessionLogger';
+import HistorySection from './components/HistorySection';
+import Navigation from './components/Navigation';
+import TimerView from './views/TimerView';
+import GlobeView from './views/GlobeView';
+import LoginView from './views/LoginView';
 import { STORAGE_KEY } from './utils';
-import { RotateCcw, Trash2 } from 'lucide-react';
+import { Session, MeditationState } from './types';
+import { LogOut } from 'lucide-react';
 
+// 탭 종류 정의
+type Tab = 'home' | 'history' | 'timer' | 'globe';
+
+// 리플(파동) 타입 정의
 interface Ripple {
   id: number;
   gradient: string;
 }
 
 const App: React.FC = () => {
-  const [totalMinutes, setTotalMinutes] = useState<number>(0);
-  const [mounted, setMounted] = useState(false);
-  const [showUndo, setShowUndo] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  
-  // Track history for undo
-  const [previousTotal, setPreviousTotal] = useState<number>(0);
-  const [lastDiff, setLastDiff] = useState<number>(0);
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // Ripple state
+  // App State
+  const [activeTab, setActiveTab] = useState<Tab>('home');
+  const [totalMinutes, setTotalMinutes] = useState<number>(0);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [mounted, setMounted] = useState(false);
+  
+  // Ripple State
   const [ripples, setRipples] = useState<Ripple[]>([]);
 
-  // Initialize from LocalStorage
+  // History Tab Highlight State
+  const [highlightHistory, setHighlightHistory] = useState(false);
+
+  // Listen for auth state changes
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogin = async (providerName: 'google' | 'apple') => {
+      if (providerName === 'google') {
+          try {
+              await signInWithPopup(auth, googleProvider);
+              // onAuthStateChanged will handle the state update
+          } catch (error) {
+              console.error("Login Failed", error);
+              // In a real app, you would show a toast/error message here
+          }
+      } else {
+          alert("Apple Login is coming soon.");
+      }
+  };
+
+  const handleLogout = async () => {
+      try {
+          await signOut(auth);
+      } catch (error) {
+          console.error("Logout Failed", error);
+      }
+  };
+
+  // 초기 데이터 로드 (Only if logged in)
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // TODO: In the future, load from Firestore using currentUser.uid
+    // For now, we still use local storage
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
-        const parsed = JSON.parse(stored);
+        const parsed: MeditationState = JSON.parse(stored);
         setTotalMinutes(parsed.totalMinutes || 0);
+        setSessions(parsed.sessions || []);
       } catch (e) {
-        console.error("Failed to parse stored meditation data", e);
+        console.error("Data load failed", e);
       }
     }
     setMounted(true);
-  }, []);
+  }, [currentUser]);
 
-  // Persist to LocalStorage whenever state changes
+  // 데이터 저장
   useEffect(() => {
-    if (mounted) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ totalMinutes }));
+    if (mounted && currentUser) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ totalMinutes, sessions }));
     }
-  }, [totalMinutes, mounted]);
+  }, [totalMinutes, sessions, mounted, currentUser]);
 
-  const triggerRipple = () => {
+  const triggerRipple = useCallback(() => {
     const id = Date.now();
-    // Generate two random vibrant colors for a beautiful gradient
-    // Using HSL to ensure they are colorful but not too dark
     const h1 = Math.floor(Math.random() * 360);
-    const h2 = (h1 + 60) % 360; // 60 deg offset for harmony
+    const h2 = (h1 + 60) % 360; 
+    
     const c1 = `hsl(${h1}, 70%, 60%)`;
     const c2 = `hsl(${h2}, 80%, 60%)`;
     
-    // Radial gradient from bottom center ish
     const gradient = `radial-gradient(circle, ${c1}, ${c2}, transparent 70%)`;
     
     setRipples(prev => [...prev, { id, gradient }]);
 
-    // Remove ripple after animation
     setTimeout(() => {
       setRipples(prev => prev.filter(r => r.id !== id));
     }, 1500);
-  };
+  }, []);
 
-  const handleUpdateMinutes = (minutes: number) => {
-    setPreviousTotal(totalMinutes);
-    setLastDiff(minutes);
-    
-    setTotalMinutes((prev) => Math.max(0, prev + minutes));
-    
+  const handleAddMinutes = useCallback((minutes: number) => {
     if (minutes > 0) {
-        triggerRipple();
+      const newSession: Session = {
+          id: Date.now(),
+          date: new Date().toISOString(),
+          duration: minutes
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setTotalMinutes(prev => prev + minutes);
+      
+      triggerRipple();
+      setHighlightHistory(true);
+      setTimeout(() => setHighlightHistory(false), 350);
+    } else if (minutes < 0) {
+      const actualSubtraction = (totalMinutes + minutes < 0) ? -totalMinutes : minutes;
+      
+      if (actualSubtraction !== 0) {
+          const newSession: Session = {
+              id: Date.now(),
+              date: new Date().toISOString(),
+              duration: actualSubtraction
+          };
+          setSessions(prev => [newSession, ...prev]);
+          setTotalMinutes(prev => prev + actualSubtraction);
+      }
     }
+  }, [totalMinutes, triggerRipple]);
 
-    // Show Undo Toast
-    setShowUndo(true);
-    const timer = setTimeout(() => setShowUndo(false), 5000); // 5 seconds to undo
-    return () => clearTimeout(timer);
-  };
+  // Loading Screen (Splash)
+  if (authLoading) {
+      return <div className="min-h-screen bg-zen-bg flex items-center justify-center text-zen-muted animate-pulse"></div>;
+  }
 
-  const handleUndo = () => {
-    setTotalMinutes(previousTotal);
-    setShowUndo(false);
-  };
-
-  const confirmReset = () => {
-    setTotalMinutes(0);
-    setShowResetConfirm(false);
-    setShowUndo(false); // Hide undo toast if visible as we just reset everything
-  };
+  // Login Screen
+  if (!currentUser) {
+      return (
+          <div className="h-[100dvh] bg-zen-bg text-zen-text font-sans">
+              <LoginView onLogin={handleLogin} />
+          </div>
+      );
+  }
 
   if (!mounted) return <div className="min-h-screen bg-zen-bg" />;
 
   return (
-    <div className="relative min-h-screen bg-zen-bg text-zen-text overflow-hidden flex flex-col justify-between font-sans">
+    <div className="flex flex-col h-[100dvh] bg-zen-bg text-zen-text font-sans overflow-hidden relative">
       
-      {/* Ambient Background Glow (Static) */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-stone-800/20 blur-[120px] rounded-full pointer-events-none z-0" />
-
-      {/* Background Ripples Layer */}
-      {/* Using margins for centering instead of translate to avoid conflict with scale animation keyframes */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+      {/* Background Ripples Layer (Overlay) */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-50">
         {ripples.map(ripple => (
             <div
                 key={ripple.id}
-                className="absolute top-1/2 left-1/2 w-[100vw] h-[100vw] -ml-[50vw] -mt-[50vw] rounded-full opacity-0 animate-ripple origin-center"
+                className="absolute top-1/2 left-1/2 w-[100vw] h-[100vw] -ml-[50vw] -mt-[50vw] rounded-full opacity-0 animate-ripple origin-center mix-blend-screen blur-xl"
                 style={{ background: ripple.gradient }}
             />
         ))}
       </div>
 
-      {/* Reset Button (Top Right, Subtle) */}
-      <button
-        onClick={() => setShowResetConfirm(true)}
-        className="absolute top-6 right-6 p-3 text-zen-muted/30 hover:text-zen-muted/80 transition-colors duration-300 z-40 outline-none"
-        aria-label="Reset progress"
-      >
-        <Trash2 className="w-5 h-5" />
-      </button>
+      {/* 메인 콘텐츠 영역 (스크롤 가능) - z-index 10 */}
+      <main className="flex-1 overflow-y-auto relative custom-scrollbar z-10">
+        {activeTab === 'home' && (
+          <div className="h-full flex flex-col justify-center animate-fade-in relative">
+             
+             {/* Logout Button (Temporary placement) */}
+             <div className="absolute top-4 right-4 z-50">
+                <button 
+                  onClick={handleLogout}
+                  className="p-2 text-zen-muted hover:text-zen-text transition-colors opacity-50 hover:opacity-100"
+                  aria-label="Logout"
+                >
+                  <LogOut size={16} />
+                </button>
+             </div>
 
-      {/* Undo Toast - Positioned at top center */}
-      <div 
-        className={`
-            fixed top-6 left-1/2 -translate-x-1/2 z-50
-            transition-all duration-500 ease-in-out
-            ${showUndo ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}
-        `}
-      >
-        <button 
-            onClick={handleUndo}
-            className="flex items-center gap-2 px-5 py-2.5 bg-stone-800 border border-stone-700/50 rounded-full shadow-2xl text-sm font-medium text-zen-text/90 hover:bg-stone-700 transition-colors"
-        >
-            <RotateCcw className="w-3.5 h-3.5 text-zen-accent" />
-            <span>
-                {lastDiff > 0 
-                  ? `Undo adding ${lastDiff}m` 
-                  : `Undo removing ${Math.abs(lastDiff)}m`
-                }
-            </span>
-        </button>
-      </div>
+             <div className="flex-1 flex items-center justify-center">
+                <AccumulatorDisplay totalMinutes={totalMinutes} />
+             </div>
+             <div className="pb-8 relative z-20">
+                <SessionLogger onAddMinutes={handleAddMinutes} />
+             </div>
+          </div>
+        )}
 
-      {/* Reset Confirmation Modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            {/* Backdrop */}
-            <div 
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
-                onClick={() => setShowResetConfirm(false)}
-            />
-            
-            {/* Modal Content */}
-            <div className="relative bg-zen-surface border border-white/10 p-6 rounded-2xl max-w-sm w-full shadow-2xl animate-scale-in">
-                <h3 className="text-xl font-medium text-zen-text mb-2">Reset Progress?</h3>
-                <p className="text-zen-muted mb-6 text-sm leading-relaxed">
-                    This will permanently delete all your accumulated meditation time. This action cannot be undone.
-                </p>
-                
-                <div className="flex gap-3 justify-end">
-                    <button 
-                        onClick={() => setShowResetConfirm(false)}
-                        className="px-4 py-2 text-sm text-zen-muted hover:text-zen-text transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button 
-                        onClick={confirmReset}
-                        className="px-4 py-2 text-sm bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-colors"
-                    >
-                        Reset
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
+        {activeTab === 'history' && (
+          <div className="animate-fade-in pt-10">
+            <HistorySection sessions={sessions} />
+          </div>
+        )}
 
-      {/* Main Content Area - Expands to push footer down */}
-      <main className="flex-grow flex flex-col items-center justify-center relative z-10 px-6 pt-12">
-        <AccumulatorDisplay totalMinutes={totalMinutes} />
+        {activeTab === 'timer' && (
+          <TimerView onFinish={handleAddMinutes} />
+        )}
+
+        {activeTab === 'globe' && (
+          <GlobeView />
+        )}
       </main>
 
-      {/* Bottom Control Area */}
-      <footer className="relative z-20 w-full bg-gradient-to-t from-zen-bg via-zen-bg to-transparent pt-8">
-         <SessionLogger onAddMinutes={handleUpdateMinutes} />
-      </footer>
-
+      {/* 하단 내비게이션 바 */}
+      <div className="z-20 relative bg-zen-bg">
+          <Navigation 
+            activeTab={activeTab} 
+            onTabChange={setActiveTab} 
+            highlightHistory={highlightHistory}
+          />
+      </div>
     </div>
   );
 };

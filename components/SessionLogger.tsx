@@ -14,17 +14,17 @@ const SessionLogger: React.FC<SessionLoggerProps> = ({ onAddMinutes }) => {
   
   const selectedMinutes = PRESETS[sliderIndex];
 
-  const handleAction = (type: 'add' | 'remove') => {
+  const handleAction = (type: 'add' | 'remove', e?: React.MouseEvent<HTMLButtonElement>) => {
     const minutesToLog = type === 'add' ? selectedMinutes : -selectedMinutes;
     onAddMinutes(minutesToLog);
     
-    // Minimal visual feedback
+    // Simple button press feedback (scale down)
     const btnId = type === 'add' ? 'btn-add' : 'btn-remove';
     const btn = document.getElementById(btnId);
     if (btn) {
-      btn.classList.add('scale-95', 'opacity-80');
+      btn.classList.add('scale-95', 'opacity-90');
       setTimeout(() => {
-        btn.classList.remove('scale-95', 'opacity-80');
+        btn.classList.remove('scale-95', 'opacity-90');
       }, 150);
     }
   };
@@ -72,7 +72,7 @@ const SessionLogger: React.FC<SessionLoggerProps> = ({ onAddMinutes }) => {
         {/* Remove Button (Neutral, Icon-only) */}
         <button
             id="btn-remove"
-            onClick={() => handleAction('remove')}
+            onClick={(e) => handleAction('remove', e)}
             aria-label="Remove time"
             className="
                 flex-1 
@@ -89,7 +89,7 @@ const SessionLogger: React.FC<SessionLoggerProps> = ({ onAddMinutes }) => {
         {/* Add Button (Prominent) */}
         <button
             id="btn-add"
-            onClick={() => handleAction('add')}
+            onClick={(e) => handleAction('add', e)}
             className="
                 flex-[2.5] 
                 bg-zen-text text-zen-bg
